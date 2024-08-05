@@ -24,8 +24,6 @@
 #define UNIX_PATH_MAX 108
 #define SV_SOCK_PATH "serial_echo"
 #define BUF_SIZE 1024
-#define INET_ADDR "127.0.0.1"
-#define PORT_NUM 50002
 // -----
 
 #define BAUDRATE_DEFAULT 0
@@ -66,16 +64,8 @@ int id_interval = -1;
 time_t last_id = 0;
 bool tx_since_last_id = false;
 
-// // ----- SERIAL ECHO
-// struct sockaddr_un svaddr, claddr;
-// int sfd, j;
-// size_t msgLen;
-// ssize_t numBytes;
-// char resp[BUF_SIZE];
-// // -----
-
 // ----- SERIAL ECHO
-struct sockaddr_in svaddr;
+struct sockaddr_un svaddr, claddr;
 int sfd, j;
 size_t msgLen;
 ssize_t numBytes;
@@ -83,8 +73,7 @@ char resp[BUF_SIZE];
 // -----
 
 void cleanup(void) {
-    //remove(claddr.sun_path);            /* Remove client socket pathname */
-    close(sfd);
+    remove(claddr.sun_path);            /* Remove client socket pathname */
     if (kiss_over_tcp) {
         close_tcp(attached_tnc);
     } else {
@@ -184,23 +173,6 @@ void read_loop(void) {
 
     int poll_timeout = 1000;
     while (should_continue) {
-        // ----- SERIAL ECHO
-        /* Create client socket; bind to unique pathname (based on PID) */
-
-        sfd = socket(AF_INET, SOCK_DGRAM, 0);
-        if (sfd == -1)
-            perror("socket");
-
-        memset(&svaddr, 0, sizeof(struct sockaddr_in));
-        svaddr.sin_family = AF_INET;
-        svaddr.sin_port = htons(PORT_NUM);
-
-        if (inet_pton(AF_INET, INET_ADDR, &svaddr.sin_addr) <= 0)
-        {
-            perror("inet_pton failed for address");
-        }
-        // -----
-
         int poll_result = poll(fds, 2, poll_timeout);
         if (poll_result != -1) {
             if (poll_result == 0) {
@@ -296,24 +268,13 @@ void read_loop(void) {
                                         if (serial_buffer[i] == 0x23 && serial_buffer[i-1] == 0xc0)
                                             serial_echo = true;
                                     }
-                                    // // ----- SERIAL ECHO
-                                    // if (serial_echo)
-                                    // {
-                                    //     sendto(sfd, serial_buffer, tnc_len, 0, (struct sockaddr *) &svaddr,
-                                    //         sizeof(struct sockaddr_un));
-                                    // }
-                                    
-                                    // // -----
-
                                     // ----- SERIAL ECHO
                                     if (serial_echo)
                                     {
-                                        if (sendto(sfd, serial_buffer, tnc_len, 0, (struct sockaddr*)&svaddr,
-                                                sizeof(struct sockaddr_in)) != tnc_len)
-                                            perror("error sending data");
-                                        //fprintf(stderr, "%s\n-----\n", serial_buffer);
-                                        serial_echo = false;
-                                    }                    
+                                        sendto(sfd, serial_buffer, tnc_len, 0, (struct sockaddr *) &svaddr,
+                                            sizeof(struct sockaddr_un));
+                                    }
+                                    
                                     // -----
                                 } else {
                                     if (daemonize) {
@@ -333,7 +294,6 @@ void read_loop(void) {
         } else {
             should_continue = false;
         }
-        close(sfd);
     }
     cleanup();
     exit(1);
@@ -631,6 +591,28 @@ int main(int argc, char **argv) {
 
     signal(SIGINT, signal_handler);
 
+    // ----- SERIAL ECHO
+    /* Create client socket; bind to unique pathname (based on PID) */
+
+    sfd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (sfd == -1)
+        perror("socket");
+
+    memset(&claddr, 0, sizeof(struct sockaddr_un));
+    claddr.sun_family = AF_UNIX;
+    snprintf(claddr.sun_path, sizeof(claddr.sun_path),
+            "/tmp/serial_echo.%ld", (long) getpid());
+    if (bind(sfd, (struct sockaddr *) &claddr, sizeof(struct sockaddr_un)) == -1)
+        perror("bind");
+    //printf("Socket bound to %s\n", claddr.sun_path);
+
+    /* Construct address of server */
+
+    memset(&svaddr, 0, sizeof(struct sockaddr_un));
+    svaddr.sun_family = AF_UNIX;
+    strncpy(svaddr.sun_path, SV_SOCK_PATH, sizeof(svaddr.sun_path) - 1);
+    // -----
+
     struct arguments arguments;
     signal(SIGINT, signal_handler);
 
@@ -709,27 +691,6 @@ int main(int argc, char **argv) {
         become_daemon();
         syslog(LOG_NOTICE, "tncattach daemon running");
     }
-
-    // // ----- SERIAL ECHO
-    // /* Create client socket; bind to unique pathname (based on PID) */
-
-    // sfd = socket(AF_UNIX, SOCK_DGRAM, 0);
-    // if (sfd == -1)
-    //     perror("socket");
-
-    // memset(&claddr, 0, sizeof(struct sockaddr_un));
-    // claddr.sun_family = AF_UNIX;
-    // snprintf(claddr.sun_path, sizeof(claddr.sun_path),
-    //         "/home/ubuntu/tncattach/serial_echo.%ld", (long) getpid());
-    // if (bind(sfd, (struct sockaddr *) &claddr, sizeof(struct sockaddr_un)) == -1)
-    //     perror("bind");
-    // printf("Socket bound to %s\n", claddr.sun_path);
-
-    // /* Construct address of server */
-    // memset(&svaddr, 0, sizeof(struct sockaddr_un));
-    // svaddr.sun_family = AF_UNIX;
-    // strncpy(svaddr.sun_path, SV_SOCK_PATH, sizeof(svaddr.sun_path) - 1);
-    // // -----
 
     read_loop();
 

@@ -17,5 +17,7 @@
 
 #define MAX_PAYLOAD MTU_MAX
 
+#define LAST_RSSI 0x23
+
 void kiss_serial_read(uint8_t sbyte);
 int kiss_write_frame(int serial_port, uint8_t* buffer, int frame_len);

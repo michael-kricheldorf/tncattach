@@ -128,7 +128,7 @@ bool setup_port(int fd, int speed) {
     tty.c_oflag &= ~ONLCR;
 
     // Block forever until at least one byte is read.
-    tty.c_cc[VMIN]   = 1;
+    tty.c_cc[VMIN]   = 1; // changing this to 0 will result in a few bytes being read and then the serial_read program crashing due to multiple accesses on port
     tty.c_cc[VTIME]  = 0;
 
     // TODO: Check these
